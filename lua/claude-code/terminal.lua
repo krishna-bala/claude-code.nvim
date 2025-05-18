@@ -15,12 +15,84 @@ M.terminal = {
   saved_updatetime = nil,
 }
 
+--- Calculate floating window dimensions from percentage strings
+--- @param value number|string Dimension value (number or percentage string)
+--- @param max_value number Maximum value (columns or lines)
+--- @return number Calculated dimension
+--- @private
+local function calculate_float_dimension(value, max_value)
+  if type(value) == 'string' and value:match('^%d+%%$') then
+    local percentage = tonumber(value:match('^(%d+)%%$'))
+    return math.floor(max_value * percentage / 100)
+  end
+  return value
+end
+
+--- Calculate floating window position for centering
+--- @param value number|string Position value (number, "center", or percentage)
+--- @param window_size number Size of the window
+--- @param max_value number Maximum value (columns or lines)
+--- @return number Calculated position
+--- @private
+local function calculate_float_position(value, window_size, max_value)
+  if value == 'center' then
+    return math.floor((max_value - window_size) / 2)
+  elseif type(value) == 'string' and value:match('^%d+%%$') then
+    local percentage = tonumber(value:match('^(%d+)%%$'))
+    return math.floor(max_value * percentage / 100)
+  end
+  return value or 0
+end
+
+--- Create a floating window for Claude Code
+--- @param config table Plugin configuration containing window settings
+--- @param existing_bufnr number|nil Buffer number of existing buffer to show in the float (optional)
+--- @return number Window ID of the created floating window
+--- @private
+local function create_float(config, existing_bufnr)
+  local float_config = config.window.float or {}
+  
+  -- Calculate dimensions
+  local width = calculate_float_dimension(float_config.width, vim.o.columns)
+  local height = calculate_float_dimension(float_config.height, vim.o.lines)
+  
+  -- Calculate position
+  local row = calculate_float_position(float_config.row, height, vim.o.lines)
+  local col = calculate_float_position(float_config.col, width, vim.o.columns)
+  
+  -- Create floating window configuration
+  local win_config = {
+    relative = float_config.relative or 'editor',
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    border = float_config.border or 'rounded',
+    style = 'minimal',
+  }
+  
+  -- Create buffer if we don't have an existing one
+  local bufnr = existing_bufnr
+  if not bufnr then
+    bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
+  end
+  
+  -- Create and return the floating window
+  return vim.api.nvim_open_win(bufnr, true, win_config)
+end
+
 --- Create a split window according to the specified position configuration
 --- @param position string Window position configuration
 --- @param config table Plugin configuration containing window settings
 --- @param existing_bufnr number|nil Buffer number of existing buffer to show in the split (optional)
 --- @private
 local function create_split(position, config, existing_bufnr)
+  -- Handle floating window
+  if position == 'float' then
+    create_float(config, existing_bufnr)
+    return
+  end
+
   local is_vertical = position:match('vsplit') or position:match('vertical')
 
   -- Create the window with the user's specified command
@@ -93,37 +165,81 @@ function M.toggle(claude_code, config, git)
       end
     end
   else
-    -- Claude Code is not running, start it in a new split
-    create_split(config.window.position, config)
-
-    -- Determine if we should use the git root directory
-    local cmd = 'terminal ' .. config.command
-    if config.git and config.git.use_git_root then
-      local git_root = git.get_git_root()
-      if git_root then
-        -- Use pushd/popd to change directory instead of --cwd
-        cmd = 'terminal pushd ' .. git_root .. ' && ' .. config.command .. ' && popd'
+    -- Claude Code is not running, start it in a new split or float
+    if config.window.position == 'float' then
+      -- For floating window, create buffer first with terminal
+      local bufnr = vim.api.nvim_create_buf(false, true) -- unlisted, scratch
+      vim.api.nvim_buf_set_option(bufnr, 'bufhidden', 'hide')
+      
+      -- Create the floating window
+      local win_id = create_float(config, bufnr)
+      
+      -- Set current buffer to run terminal command
+      vim.api.nvim_win_set_buf(win_id, bufnr)
+      
+      -- Determine command
+      local cmd = config.command
+      if config.git and config.git.use_git_root then
+        local git_root = git.get_git_root()
+        if git_root then
+          cmd = 'pushd ' .. git_root .. ' && ' .. config.command .. ' && popd'
+        end
       end
-    end
+      
+      -- Run terminal in the buffer
+      vim.fn.termopen(cmd)
+      vim.api.nvim_buf_set_name(bufnr, 'claude-code')
+      
+      -- Configure buffer options
+      if config.window.hide_numbers then
+        vim.api.nvim_win_set_option(win_id, 'number', false)
+        vim.api.nvim_win_set_option(win_id, 'relativenumber', false)
+      end
+      
+      if config.window.hide_signcolumn then
+        vim.api.nvim_win_set_option(win_id, 'signcolumn', 'no')
+      end
+      
+      -- Store buffer number
+      claude_code.claude_code.bufnr = bufnr
+      
+      -- Enter insert mode if configured
+      if config.window.enter_insert and not config.window.start_in_normal_mode then
+        vim.cmd 'startinsert'
+      end
+    else
+      -- Regular split window
+      create_split(config.window.position, config)
 
-    vim.cmd(cmd)
-    vim.cmd 'setlocal bufhidden=hide'
-    vim.cmd 'file claude-code'
+      -- Determine if we should use the git root directory
+      local cmd = 'terminal ' .. config.command
+      if config.git and config.git.use_git_root then
+        local git_root = git.get_git_root()
+        if git_root then
+          -- Use pushd/popd to change directory instead of --cwd
+          cmd = 'terminal pushd ' .. git_root .. ' && ' .. config.command .. ' && popd'
+        end
+      end
 
-    if config.window.hide_numbers then
-      vim.cmd 'setlocal nonumber norelativenumber'
-    end
+      vim.cmd(cmd)
+      vim.cmd 'setlocal bufhidden=hide'
+      vim.cmd 'file claude-code'
 
-    if config.window.hide_signcolumn then
-      vim.cmd 'setlocal signcolumn=no'
-    end
+      if config.window.hide_numbers then
+        vim.cmd 'setlocal nonumber norelativenumber'
+      end
 
-    -- Store buffer number for future reference
-    claude_code.claude_code.bufnr = vim.fn.bufnr '%'
+      if config.window.hide_signcolumn then
+        vim.cmd 'setlocal signcolumn=no'
+      end
 
-    -- Automatically enter insert mode in terminal unless configured to start in normal mode
-    if config.window.enter_insert and not config.window.start_in_normal_mode then
-      vim.cmd 'startinsert'
+      -- Store buffer number for future reference
+      claude_code.claude_code.bufnr = vim.fn.bufnr '%'
+
+      -- Automatically enter insert mode in terminal unless configured to start in normal mode
+      if config.window.enter_insert and not config.window.start_in_normal_mode then
+        vim.cmd 'startinsert'
+      end
     end
   end
 end
