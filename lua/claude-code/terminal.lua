@@ -155,6 +155,7 @@ function M.toggle(claude_code, config, git)
 
     vim.cmd(cmd)
     vim.cmd 'setlocal bufhidden=hide'
+    vim.cmd 'setlocal nobuflisted'
 
     -- Create a unique buffer name (or a standard one in single instance mode)
     local buffer_name
