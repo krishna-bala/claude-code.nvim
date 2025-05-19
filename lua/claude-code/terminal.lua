@@ -89,8 +89,8 @@ end
 local function create_split(position, config, existing_bufnr)
   -- Handle floating window
   if position == 'float' then
-    create_float(config, existing_bufnr)
-    return
+    local win_id = create_float(config, existing_bufnr)
+    return win_id
   end
 
   local is_vertical = position:match('vsplit') or position:match('vertical')
