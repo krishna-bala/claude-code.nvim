@@ -32,7 +32,28 @@ describe('terminal module', function()
 
     -- Mock vim.api.nvim_buf_is_valid
     _G.vim.api.nvim_buf_is_valid = function(bufnr)
-      return bufnr ~= nil
+      return bufnr ~= nil and bufnr > 0
+    end
+    
+    -- Mock vim.api.nvim_buf_get_option
+    _G.vim.api.nvim_buf_get_option = function(bufnr, option)
+      if option == 'buftype' then
+        return 'terminal'  -- Always return terminal for valid buffers in tests
+      end
+      return ''
+    end
+    
+    -- Mock vim.api.nvim_buf_get_var
+    _G.vim.api.nvim_buf_get_var = function(bufnr, varname)
+      if varname == 'terminal_job_id' then
+        return 12345  -- Return a mock job ID
+      end
+      error('Invalid buffer variable: ' .. varname)
+    end
+    
+    -- Mock vim.fn.jobwait
+    _G.vim.fn.jobwait = function(job_ids, timeout)
+      return {-1}  -- -1 means job is still running
     end
 
     -- Mock vim.fn.win_findbuf
@@ -140,7 +161,8 @@ describe('terminal module', function()
       local git_root_cmd_found = false
 
       for _, cmd in ipairs(vim_cmd_calls) do
-        if cmd:match('terminal pushd /test/git/root && ' .. config.command .. ' && popd') then
+        -- The path should now be shell-escaped
+        if cmd:match("terminal pushd '/test/git/root' && " .. config.command .. " && popd") then
           git_root_cmd_found = true
           break
         end
