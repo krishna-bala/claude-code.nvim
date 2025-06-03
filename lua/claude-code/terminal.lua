@@ -69,10 +69,7 @@ function M.force_insert_mode(claude_code, config)
   -- Check if current buffer is any of our Claude instances
   local is_claude_instance = false
   for _, bufnr in pairs(claude_code.claude_code.instances) do
-    if bufnr
-      and bufnr == current_bufnr
-      and vim.api.nvim_buf_is_valid(bufnr)
-    then
+    if bufnr and bufnr == current_bufnr and vim.api.nvim_buf_is_valid(bufnr) then
       is_claude_instance = true
       break
     end
@@ -110,7 +107,7 @@ function M.toggle(claude_code, config, git)
     end
   else
     -- Use a fixed ID for single instance mode
-    instance_id = "global"
+    instance_id = 'global'
   end
 
   claude_code.claude_code.current_instance = instance_id
