@@ -116,7 +116,7 @@ local function create_float(config, existing_bufnr, claude_code, git, instance_i
   -- Create the floating window
   local win_id = vim.api.nvim_open_win(bufnr, true, win_config)
   
-  -- If we're reusing an existing buffer, check if terminal job is still running
+  -- If we're reusing an existing buffer and have full context, check if terminal job is still running
   if existing_bufnr and claude_code and git and instance_id then
     local job_id = vim.b[bufnr].terminal_job_id
     if not job_id or vim.fn.jobwait({job_id}, 0)[1] ~= -1 then
@@ -193,7 +193,7 @@ local function create_terminal_exit_handler(claude_code, instance_id, bufnr, win
             
             -- If no normal windows remain, create one
             if not has_normal_window then
-              vim.cmd('enew')
+              vim.cmd('new')
             end
           end
         end
@@ -274,7 +274,7 @@ end
 local function create_split(position, config, existing_bufnr)
   -- Handle floating window
   if position == 'float' then
-    return create_float(config, existing_bufnr)
+    return create_float(config, existing_bufnr, nil, nil, nil)
   end
 
   local is_vertical = position:match('vsplit') or position:match('vertical')
@@ -436,7 +436,7 @@ local function create_new_instance(claude_code, config, git, instance_id)
     vim.api.nvim_set_option_value('bufhidden', 'hide', {buf = new_bufnr})
 
     -- Create the floating window
-    local win_id = create_float(config, new_bufnr)
+    local win_id = create_float(config, new_bufnr, claude_code, git, instance_id)
 
     -- Set current buffer to run terminal command
     vim.api.nvim_win_set_buf(win_id, new_bufnr)
