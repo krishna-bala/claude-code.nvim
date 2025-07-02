@@ -51,6 +51,37 @@ describe('terminal buffer name collision handling', function()
       return bufnr ~= nil and bufnr > 0 and not deleted_buffers[bufnr]
     end
 
+    -- Mock vim.api.nvim_get_option_value (new API)
+    _G.vim.api.nvim_get_option_value = function(option, opts)
+      if option == 'buftype' then
+        return 'terminal'  -- Always return terminal for valid buffers in tests
+      end
+      return ''
+    end
+
+    -- Mock vim.b for buffer variables (new API)
+    _G.vim.b = setmetatable({}, {
+      __index = function(t, bufnr)
+        if not rawget(t, bufnr) then
+          rawset(t, bufnr, {
+            terminal_job_id = 12345  -- Mock job ID
+          })
+        end
+        return rawget(t, bufnr)
+      end
+    })
+
+    -- Mock vim.api.nvim_set_option_value (new API for both buffer and window options)
+    _G.vim.api.nvim_set_option_value = function(option, value, opts)
+      -- Just mock this to do nothing for tests
+      return true
+    end
+
+    -- Mock vim.fn.jobwait
+    _G.vim.fn.jobwait = function(job_ids, timeout)
+      return {-1}  -- -1 means job is still running
+    end
+
     -- Mock vim.api.nvim_buf_delete
     _G.vim.api.nvim_buf_delete = function(bufnr, opts)
       deleted_buffers[bufnr] = true
