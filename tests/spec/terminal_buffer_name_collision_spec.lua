@@ -82,6 +82,8 @@ describe('terminal buffer name collision handling', function()
       return {-1}  -- -1 means job is still running
     end
 
+    -- Note: os.time mocking is done per test case as needed
+
     -- Mock vim.api.nvim_buf_delete
     _G.vim.api.nvim_buf_delete = function(bufnr, opts)
       deleted_buffers[bufnr] = true
@@ -266,6 +268,12 @@ describe('terminal buffer name collision handling', function()
       local existing_bufnr = 50
       existing_buffers[existing_bufnr] = sanitized_name
 
+      -- Mock os.time for predictable timestamps in this test
+      local original_time = os.time
+      os.time = function()
+        return 1234567890  -- Fixed timestamp for testing
+      end
+
       -- Mock win_findbuf to return windows (buffer is displayed)
       _G.vim.fn.win_findbuf = function(bufnr)
         if bufnr == existing_bufnr then
@@ -292,14 +300,18 @@ describe('terminal buffer name collision handling', function()
       assert.is_false(deleted_buffers[existing_bufnr] or false, 'displayed buffer should not be deleted')
       
       -- Should have created a new buffer with a different name (timestamped)
+      local expected_timestamped_name = sanitized_name .. '-1234567890'
       local found_timestamped_name = false
       for _, call in ipairs(nvim_buf_set_name_calls) do
-        if call.name:match(sanitized_name .. '%-[0-9]+') then
+        if call.name == expected_timestamped_name then
           found_timestamped_name = true
           break
         end
       end
-      assert.is_true(found_timestamped_name, 'new buffer should be created with timestamped name')
+      assert.is_true(found_timestamped_name, 'new buffer should be created with timestamped name: ' .. expected_timestamped_name)
+      
+      -- Restore original os.time
+      os.time = original_time
     end)
   end)
 
@@ -346,6 +358,12 @@ describe('terminal buffer name collision handling', function()
       local existing_bufnr = 60
       existing_buffers[existing_bufnr] = sanitized_name
 
+      -- Mock os.time for predictable timestamps in this test
+      local original_time = os.time
+      os.time = function()
+        return 1234567890  -- Fixed timestamp for testing
+      end
+
       -- Mock win_findbuf to return windows (buffer is displayed)
       _G.vim.fn.win_findbuf = function(bufnr)
         if bufnr == existing_bufnr then
@@ -372,14 +390,18 @@ describe('terminal buffer name collision handling', function()
       assert.is_false(deleted_buffers[existing_bufnr] or false, 'displayed buffer should not be deleted')
       
       -- Should have created a new buffer with a different name (timestamped)
+      local expected_timestamped_name = sanitized_name .. '-1234567890'
       local found_timestamped_file_cmd = false
       for _, cmd in ipairs(vim_cmd_calls) do
-        if cmd:match('file ' .. sanitized_name .. '%-[0-9]+') then
+        if cmd == ('file ' .. expected_timestamped_name) then
           found_timestamped_file_cmd = true
           break
         end
       end
-      assert.is_true(found_timestamped_file_cmd, 'file command should be called with timestamped name')
+      assert.is_true(found_timestamped_file_cmd, 'file command should be called with timestamped name: ' .. expected_timestamped_name)
+      
+      -- Restore original os.time
+      os.time = original_time
     end)
   end)
 
@@ -465,15 +487,16 @@ describe('terminal buffer name collision handling', function()
       assert.is_false(deleted_buffers[existing_bufnr] or false, 'first buffer should not be deleted')
       assert.is_false(deleted_buffers[existing_timestamped_bufnr] or false, 'timestamped buffer should not be deleted')
       
-      -- Should have created a new buffer with a timestamped name
+      -- Should have created a new buffer with a timestamped name (second-level collision gets -1 suffix)
+      local expected_name = timestamped_name .. '-1'  -- Our collision handler adds -1 for second collision
       local found_timestamped_name = false
       for _, call in ipairs(nvim_buf_set_name_calls) do
-        if call.name == timestamped_name then
+        if call.name == expected_name then
           found_timestamped_name = true
           break
         end
       end
-      assert.is_true(found_timestamped_name, 'new buffer should be created with timestamped name')
+      assert.is_true(found_timestamped_name, 'new buffer should be created with timestamped name: ' .. expected_name)
     end)
   end)
 end)

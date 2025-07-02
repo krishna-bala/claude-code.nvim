@@ -147,8 +147,20 @@ local function handle_buffer_name_collision(buffer_name, current_bufnr)
         -- Buffer exists but isn't displayed, safe to delete
         vim.api.nvim_buf_delete(existing_bufnr, {force = true})
       else
-        -- Buffer is being displayed, use a different name
-        buffer_name = buffer_name .. '-' .. os.time()
+        -- Buffer is being displayed, use a different name with timestamp
+        -- Handle multiple levels of collision by trying different suffixes
+        local base_name = buffer_name
+        local timestamp = os.time()
+        local attempt = 0
+        repeat
+          if attempt == 0 then
+            buffer_name = base_name .. '-' .. timestamp
+          else
+            buffer_name = base_name .. '-' .. timestamp .. '-' .. attempt
+          end
+          existing_bufnr = vim.fn.bufnr(buffer_name)
+          attempt = attempt + 1
+        until existing_bufnr == -1 or attempt > 10  -- Safety limit to prevent infinite loop
       end
     end
   end
